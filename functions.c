@@ -76,13 +76,24 @@ int ioc_help(char **args)
    @param args List of args.  Not examined.
    @return Always returns 0, to terminate execution.
  */
-int ioc_exit(char **args)
-{
+int ioc_exit(char **args) {
     return 0;
 }
 
+#define IOC_PWD_BUFSIZE 1024
+
+/**
+   @brief Builtin command: pwd.
+   @param args List of args.  Not examined.
+   @return Always returns 0, to terminate execution.
+ */
 int ioc_pwd(char **args){
-    return 1;
+  char cwd[1024];
+   if (getcwd(cwd, sizeof(cwd)) != NULL)
+       fprintf(stdout, "%s\n", cwd);
+   else
+       perror("getcwd() error");
+   return 0;
 }
 
 int ioc_alias(char **args){
