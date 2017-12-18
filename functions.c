@@ -1,12 +1,21 @@
-//
-// Created by Anas Guetarni on 20/11/2017.
-//
+/*
+    Title       :   Interpreteur for unix command (shell_functions.c)
+    Author      :   Erias Diego & Pisanello Antonio
+    Date        :   17/11/17
+    Description :   The functions for the terminal commands
+
+   ln                 : creates a shortcut (link) for a filename
+   char *mainfilename : name of the file that you want to create a shortcut
+   char *linkfile     : name of the shortcut
+ */
 
 #include <sys/wait.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
+#include <regex.h>
 
 #include "functions.h"
 
@@ -52,6 +61,75 @@ int ioc_cd(char **args)
 }
 
 /**
+   @brief search the pos of an array of strings.
+   @return the positions, either it stop the program while returning -1.
+ */
+
+int strpos(char *haystack, char *needle)
+{
+  char *p = strstr(haystack, needle);
+  if (p)
+     return p - haystack;
+  return -1;   // Not found = -1.
+}
+
+#define IOC_PATH_BUFSIZE 1024
+
+/**
+   @brief Builtin command: get path.
+   @param char * filename : the name of the file who contains the progiles.
+   @return Always returns 1, to continue executing.
+ */
+
+int get_path(char *filename){
+  char *line = NULL;
+	uint8_t nbRegex = 2;
+	const char *regexString[nbRegex];
+	regexString[0] = "([_|[:alpha:]]+[[:alnum:]|_]*)=[\"|']+([[:alnum:]|[:print:]]+)[\"|']+";
+	regexString[1] = "([_|[:alpha:]]+[[:alnum:]|_]*)=([[:alnum:]|[:graph:]]+)";
+	size_t maxGroups = 3;
+	regex_t regexCompiled;
+	regmatch_t groupArray[maxGroups];
+
+	FILE *fp;
+	ssize_t read;
+	size_t len = 0;
+	int line_count = 0;
+	int pos;
+
+	fp = fopen(filename, "r");
+	if (fp == NULL)
+		exit(EXIT_FAILURE);
+
+	while ((read = getline(&line, &len, fp)) != -1) {
+		line_count++;
+		for(int i=0; i < nbRegex; i++){
+			if (regcomp(&regexCompiled, regexString[i], REG_EXTENDED)){
+				printf("Could not compile regular expression.\n");
+			}
+
+			if (regexec(&regexCompiled, line, maxGroups, groupArray, 0) == 0){
+				char* env_name = calloc(groupArray[1].rm_eo - groupArray[1].rm_so + 2, sizeof(char));
+				char* env_val  = calloc(groupArray[2].rm_eo - groupArray[2].rm_so + 2, sizeof(char));
+				strncpy(env_name, line, groupArray[1].rm_eo);
+				strncpy(env_val , line + groupArray[2].rm_so, groupArray[2].rm_eo - groupArray[2].rm_so);
+				if((i == 1)&((env_val[strlen(env_val) - 1] == '"')|(env_val[strlen(env_val) - 1] == '\'')))
+					break;
+				setenv(env_name, env_val, 1);
+				break;
+			}
+		}
+  }
+
+  fclose(fp);
+  if (line)
+  free(line);
+
+  regfree(&regexCompiled);
+  return 1;
+}
+
+/**
    @brief Builtin command: print help.
    @param args List of args.  Not examined.
    @return Always returns 1, to continue executing.
@@ -88,16 +166,25 @@ int ioc_exit(char **args) {
    @return Always returns 0, to terminate execution.
  */
 int ioc_pwd(char **args){
-  char cwd[1024];
+  char cwd[IOC_PWD_BUFSIZE];
    if (getcwd(cwd, sizeof(cwd)) != NULL)
        fprintf(stdout, "%s\n", cwd);
    else
        perror("getcwd() error");
-   return 0;
+   return 1;
 }
 
+/**
+   @brief Builtin command: ln -> create a link between two files
+   @param args List of args.
+   @return Always returns 1, to continue execution.
+ */
 int ioc_alias(char **args){
-    return 1;
+  char *mainfile, *linkfile;
+  mainfile = args[1];
+  linkfile = args[2];
+  link(mainfile, linkfile);
+  return 1;
 }
 
 /**

@@ -14,6 +14,9 @@ int ioc_alias(char **args);
 int ioc_launch(char **args);
 int ioc_execute(char **args);
 
+int strpos(char *haystack, char *needle);
+int get_path(char *file);
+
 char *ioc_read_line();
 char **ioc_split_line(char *line);
 

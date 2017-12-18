@@ -15,8 +15,8 @@
 int main(int argc, char **argv)
 {
     // Run command loop.
+    get_path("profile");
     ioc_loop();
 
     return EXIT_SUCCESS;
 }
-
