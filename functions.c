@@ -84,13 +84,12 @@ int strpos(char *haystack, char *needle)
 int get_path(char *filename){
   char *line = NULL;
 	uint8_t nbRegex = 2;
-	const char *regexString[nbRegex];
-	regexString[0] = "([_|[:alpha:]]+[[:alnum:]|_]*)=[\"|']+([[:alnum:]|[:print:]]+)[\"|']+";
-	regexString[1] = "([_|[:alpha:]]+[[:alnum:]|_]*)=([[:alnum:]|[:graph:]]+)";
-	size_t maxGroups = 3;
-	regex_t regexCompiled;
-	regmatch_t groupArray[maxGroups];
-
+	const char *regexS[nbRegex];
+	regexS[0] = "([_|[:alpha:]]+[[:alnum:]|_]*)=[\"|']+([[:alnum:]|[:print:]]+)[\"|']+";
+	regexS[1] = "([_|[:alpha:]]+[[:alnum:]|_]*)=([[:alnum:]|[:graph:]]+)";
+	size_t groups = 3;
+	regex_t compiled_regex;
+	regmatch_t groupArray[groups];
 	FILE *fp;
 	ssize_t read;
 	size_t len = 0;
@@ -104,11 +103,10 @@ int get_path(char *filename){
 	while ((read = getline(&line, &len, fp)) != -1) {
 		line_count++;
 		for(int i=0; i < nbRegex; i++){
-			if (regcomp(&regexCompiled, regexString[i], REG_EXTENDED)){
+			if (regcomp(&compiled_regex, regexS[i], REG_EXTENDED)){
 				printf("Could not compile regular expression.\n");
 			}
-
-			if (regexec(&regexCompiled, line, maxGroups, groupArray, 0) == 0){
+			if (regexec(&compiled_regex, line, groups, groupArray, 0) == 0){
 				char* env_name = calloc(groupArray[1].rm_eo - groupArray[1].rm_so + 2, sizeof(char));
 				char* env_val  = calloc(groupArray[2].rm_eo - groupArray[2].rm_so + 2, sizeof(char));
 				strncpy(env_name, line, groupArray[1].rm_eo);
@@ -125,7 +123,7 @@ int get_path(char *filename){
   if (line)
   free(line);
 
-  regfree(&regexCompiled);
+  regfree(&compiled_regex);
   return 1;
 }
 
