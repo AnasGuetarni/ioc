@@ -1,343 +1,656 @@
-/*
-    Title       :   Interpreteur for unix command (shell_functions.c)
-    Author      :   Erias Diego & Pisanello Antonio
-    Date        :   17/11/17
-    Description :   The functions for the terminal commands
-
-   ln                 : creates a shortcut (link) for a filename
-   char *mainfilename : name of the file that you want to create a shortcut
-   char *linkfile     : name of the shortcut
- */
-
-#include <sys/wait.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <regex.h>
+/*****************************
+ Author:	Anas Guetarni & Melvin Gay
+ Date:		28.01.2018
+ Name:		functions.c
+ Project:	ioc
+ *****************************/
 
 #include "functions.h"
 
-/*
-  List of builtin commands, followed by their corresponding functions.
+char *progs[NB_PROGS];
+alias_t alias[MAX_ALIAS];
+int countAlias;
+
+/**
+ * Initialize intern programs
  */
-char *builtin_str[] = {
-        "cd",
-        "help",
-        "exit",
-        "pwd",
-        "alias"
-};
-
-int (*builtin_func[]) (char **) = {
-        &ioc_cd,
-        &ioc_help,
-        &ioc_exit,
-        &ioc_pwd,
-        &ioc_alias
-};
-
-int ioc_num_builtins() {
-    return sizeof(builtin_str) / sizeof(char *);
+void initProg(){
+	progs[0] = "pwd";
+	progs[1] = "cd";
+	progs[2] = "exit";
+	progs[3] = "help";
+	progs[4] = "echo";
+	progs[5] = "alias";
 }
 
 /**
-   @brief Bultin command: change directory.
-   @param args List of args.  args[0] is "cd".  args[1] is the directory.
-   @return Always returns 1, to continue executing.
+ * Check if its an external program
+ * @param inputArgs: list of arguments from the command line
+ * @param size: arguments size
+ * @param copyInput: copy of the command line
+ * @return return 1
  */
+int isCommande(char **inputArgs, int size, char *copyInput){
+	char *path;
 
-int ioc_cd(char **args)
-{
-    if (args[1] == NULL) {
-        fprintf(stderr, "ioc: expected argument to \"cd\"\n");
-    } else {
-        if (chdir(args[1]) != 0) {
-            perror("ioc");
-        }
-    }
-    return 1;
+	//Get path
+	if((path = getPath(inputArgs[0])) != NULL){
+
+		//Replace first argument
+		inputArgs[0] = path;
+
+		//Execute program
+		execute(inputArgs, 0, NULL);
+		return 1;
+	}
+	return 0;
 }
 
 /**
-   @brief search the pos of an array of strings.
-   @return the positions, either it stop the program while returning -1.
+ * Check if its an internal program
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ * @param copyInput: copy of the command line
+ * @return if we found the command return 1
  */
+int isProg(char **inputArgs, int size, char *copyInput){
+	int i;
+	for (i = 0; i < NB_PROGS; ++i) {
+		if(!strcmp(progs[i], inputArgs[0])){
 
-int strpos(char *haystack, char *needle)
-{
-  char *p = strstr(haystack, needle);
-  if (p)
-     return p - haystack;
-  return -1;   // Not found = -1.
-}
-
-#define IOC_PATH_BUFSIZE 1024
-
-/**
-   @brief Builtin command: get path.
-   @param char * filename : the name of the file who contains the progiles.
-   @return Always returns 1, to continue executing.
- */
-
-int get_path(char *filename){
-  char *line = NULL;
-	uint8_t nbRegex = 2;
-	const char *regexS[nbRegex];
-	regexS[0] = "([_|[:alpha:]]+[[:alnum:]|_]*)=[\"|']+([[:alnum:]|[:print:]]+)[\"|']+";
-	regexS[1] = "([_|[:alpha:]]+[[:alnum:]|_]*)=([[:alnum:]|[:graph:]]+)";
-	size_t groups = 3;
-	regex_t compiled_regex;
-	regmatch_t groupArray[groups];
-	FILE *fp;
-	ssize_t read;
-	size_t len = 0;
-	int line_count = 0;
-	int pos;
-
-	fp = fopen(filename, "r");
-	if (fp == NULL)
-		exit(EXIT_FAILURE);
-
-	while ((read = getline(&line, &len, fp)) != -1) {
-		line_count++;
-		for(int i=0; i < nbRegex; i++){
-			if (regcomp(&compiled_regex, regexS[i], REG_EXTENDED)){
-				printf("Could not compile regular expression.\n");
+			//Check command
+			if(!strcmp(progs[i], "pwd")){
+				if(size == 1){
+					pwdCmd(inputArgs, size);
+				}else{
+					helpPwd();
+				}
+			}else if(!strcmp(progs[i], "cd")){
+				if(size == 2){
+					cdCmd(inputArgs, size);
+				}else{
+					helpCd();
+				}
+			}else if(!strcmp(progs[i], "exit")){
+				if(size == 2){
+					exitCmd(inputArgs, size);
+				}else{
+					helpExit();
+				}
+			}else if(!strcmp(progs[i], "help")){
+				if(size == 2){
+					helpCmd(inputArgs, size);
+				}else{
+					helpHelp();
+				}
+			}else if(!strcmp(progs[i], "echo")){
+				if(size == 2){
+					echoCmd(inputArgs, size);
+				}else{
+					helpEcho();
+				}
+			}else if(!strcmp(progs[i], "alias")){
+				aliasCmd(inputArgs, size, copyInput);
 			}
-			if (regexec(&compiled_regex, line, groups, groupArray, 0) == 0){
-				char* env_name = calloc(groupArray[1].rm_eo - groupArray[1].rm_so + 2, sizeof(char));
-				char* env_val  = calloc(groupArray[2].rm_eo - groupArray[2].rm_so + 2, sizeof(char));
-				strncpy(env_name, line, groupArray[1].rm_eo);
-				strncpy(env_val , line + groupArray[2].rm_so, groupArray[2].rm_eo - groupArray[2].rm_so);
-				if((i == 1)&((env_val[strlen(env_val) - 1] == '"')|(env_val[strlen(env_val) - 1] == '\'')))
-					break;
-				setenv(env_name, env_val, 1);
-				break;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/**
+ * Check if its an environment variable
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ * @return return 1
+ */
+int isEnv(char **inputArgs, int size, char *copyInput){
+	//get "=" position
+	char *pos = strstr(inputArgs[0], "=");
+
+	//get "$" position
+	char *pos2 = strstr(inputArgs[0], "$");
+
+	if(pos){
+		environment(inputArgs[0], 1, copyInput);
+	}else if(pos2){
+		environment(inputArgs[0], 2, copyInput);
+	}else{
+		return 0;
+	}
+	return 1;
+}
+
+/**
+ * Check if its an alias
+ * @param inputArgs: arguments from the command line
+ * @return return 1
+ */
+int isAlias(char **inputArgs){
+	int aliasPlace = 0;
+
+	alias_t *al = searchAlias(inputArgs[0], &aliasPlace);
+
+	if(al != NULL){
+		execAlias(al->name, al->name, 1, 0);
+		return 1;
+	}else{
+		return 0;
+	}
+}
+
+/**
+ * Process the alias
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ * @param copyInput: copy of the command line
+ * @return if it's an environment variable return 1
+ */
+int aliasCmd(char **inputArgs, int size, char *copyInput){
+
+	if(!strcmp(inputArgs[0], "alias")){
+
+		//We add or show all alias with -p
+		if(size >= 2){
+
+			//get the position of the "=" or "-"
+			char *pos = strstr(inputArgs[1], "=");
+			char *pos2 = strstr(inputArgs[1], "-");
+
+			//If there is "="
+			if(pos || pos2){
+				processAlias(inputArgs[1], copyInput);
+				return 1;
+				//If we ask for one alias by name
+			}else if(!isChar(inputArgs[1])){
+				alias_t *al = searchAlias(inputArgs[1], NULL);
+
+				//Check if the alias exist
+				if(al != NULL){
+					showAlias(al);
+				}else{
+					printf("alias: %s: not found\n",inputArgs[1]);
+				}
+				return 1;
+			}else{
+				return 0;
+			}
+			//If only "alias", show all
+		}else if(size == 1){
+			int i;
+			for (i = 0; i < countAlias; ++i) {
+				showAlias(&alias[i]);
+			}
+			return 1;
+		}else{
+			return 0;
+		}
+	}else{
+		return 0;
+	}
+}
+
+/**
+ * Search an alias in the alias array
+ * @param name: alias that we search
+ * @return if the alias is found return it, otherwise NULL
+ */
+alias_t *searchAlias(char *name, int *place ){
+	int i;
+	for (i = 0; i < countAlias; ++i) {
+
+		//Compare current alias.name to to alias name
+		if(!strcmp(name, alias[i].name)){
+
+			//Return by address the value of the place where is found the alias
+			if (place != NULL){
+				*place = i;
+			}
+			return &alias[i];
+		}
+	}
+	return NULL;
+}
+
+/**
+ * Find in our chain if there is an special char
+ * @param input: one arguments from the command line
+ * @return 0 = false, 1 = yes
+ */
+int isChar(char * input){
+	int i;
+	for (i = 0; i < strlen(input); ++i) {
+		if( input[i] == '-' || input[i] == '$' || input[i] == '/' || input[i] == '\'' || input[i] == '"' || input[i] == '<' || input[i] == '>'){
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/**
+ * Add/print/check the alias
+ * @param input: one arguments from the command line
+ * @param copyInput: copy of the command line
+ */
+void processAlias(char *input, char *copyInput){
+	//Split the alias if there is "-"
+	int countResult1;
+	char **result = strsplit(input, "-", &countResult1);
+
+	//Check if the argument after the "-" is the "p" => show all alias
+	if(!strcmp(result[0], "p")){
+		int i;
+		for (i = 0; i < countAlias; ++i) {
+			showAlias(&alias[i]);
+		}
+
+	}else {
+
+		//Split the alias name=value and remove "alias " and keep the alias
+		int countResult2;
+		char **result2 = strsplit(removeString(copyInput), "=", &countResult2);
+		int aliasPlace = 0;
+
+		//If alias is !NULL we return the aliasPlace by address
+		alias_t *al = searchAlias(result2[0], &aliasPlace);
+
+		//If the alias is not in the array we increase the "aliasPlace"
+		if(al == NULL){
+			aliasPlace = countAlias++;
+		}
+
+		//Check is there is an space in the alias value
+		if(strstr(result2[1], " ")){
+
+			//If ' or " we can have space
+			if(strstr(result2[1], "\"") || strstr(result2[1], "'")){
+
+				//Add or replace the alias
+				alias[aliasPlace].name = result2[0];
+				alias[aliasPlace].value = result2[1];
+			}else{
+				printf("alias value is not valid. \n \t have a look to the help: help alias\n");
+			}
+		}else{
+			//Add or replace the alias
+			alias[aliasPlace].name = result2[0];
+			alias[aliasPlace].value = result2[1];
+		}
+	}
+
+	//Free split result
+	freeToken(result, countResult1);
+}
+
+/**
+ * Function which remove all before the alias name/value
+ * @param input: arguments from the command line
+ * @return the alias like a=b
+ */
+char *removeString(char* input){
+	char* s = NULL;
+	sscanf(input, "%*s%*[ ]%m[^\n]", &s);
+	return s;
+}
+
+/**
+ * Print one alias
+ * @param al: one alias
+ */
+void showAlias(alias_t *al){
+	printf("alias %s=%s\n", al->name, al->value);
+}
+
+/**
+ * Execute the alias and search recursively if there is not any loop
+ * @param currentName: name of the current alias we are looking for
+ * @param baseName: name of the first alias we are looking for
+ * @param firstCall: 1 = first call of this function, 0 = else
+ */
+void execAlias(char *currentName, char *baseName, int firstCall, int max){
+	//If the name is the same as the original and it is not the first call of the function -> loop
+	if((strcmp(currentName, baseName) == 0 && firstCall != 1)|| (max > (countAlias + 1))){//
+		printf("Error: Alias loop\n");
+	}else{//Otherwise do the recursion
+
+		//Search the correspondence of the current alias
+		alias_t *a = searchAlias(currentName, NULL);
+
+		//If there is not, its finished -> execute value
+		if(a == NULL){
+			execAliasEnv(currentName);
+			//Otherwise continue to search
+		}else{
+			max++;
+
+			//We search the next name, we do not change the base name, it's not longer the first call
+			execAlias(a->value, baseName, 0, max);
+		}
+	}
+}
+
+/**
+ * Get/set environment variable or print string when we use the command echo
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ */
+void echoCmd(char **inputArgs, int size){
+	if(size >= 2){
+		//get the position of the "$"
+		char *pos = strstr(inputArgs[1], "$");
+
+		//If there is "$"
+		if(pos){
+			environment(inputArgs[1], 0, "");
+		}else{
+			printf("%s\n", inputArgs[1]);
+		}
+	}
+}
+
+/**
+ * Print the current working directory
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ */
+void pwdCmd(char **inputArgs, int size){
+	//Current working directory
+	char cwd[MAX_INPUT];
+
+	//Get current working directory
+	getcwd(cwd, sizeof(cwd));
+
+	printf("%s\n", cwd);
+}
+
+/**
+ * Exit the program with a specific exit code
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ */
+void exitCmd(char **inputArgs, int size){
+	if(size >= 2){
+
+		//Take the value of the exit code
+		int errorCode = atoi(inputArgs[1]);
+		exit(errorCode);
+	}else{
+		helpExit();
+	}
+}
+
+/**
+ * Change the current working directory
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ */
+void cdCmd(char **inputArgs, int size){
+	if(size >= 2){
+		//Get environment variable if the second argument
+		char *env = getStrEnv(inputArgs[1]);
+
+		//If it's an environment variable
+		if(env){
+			//InputArgs is now the environment variable
+			inputArgs[1] = env;
+		}
+
+		//If !success chdir
+		if (chdir(inputArgs[1]) != 0) {
+			printf("Power-Shell: cd: %s: No such file or directory\n", inputArgs[1]);
+		}
+		free(env);
+	}
+}
+
+/**
+ * Process (get/set) the environment variable or execute the variable
+ * @param env: arguments from the command line
+ * @param setEnv: define if we wanna set/get the environment arable
+ */
+void environment(char *env, int setEnv, char *copyInput){
+	char split[1];
+	char *args[MAX_INPUT];
+	char *token;
+	int count = 0;
+
+	//if setEnv != 2 we execute the value of the variable, else variable is stored
+	if(setEnv != 2){
+		if(setEnv){
+			//Char to split our string
+			split[0] = '=';
+
+			//Get the first token
+			token = strtok(copyInput, split);
+		}else{
+			//Char to split our string
+			split[0] = '$';
+
+			//Get the first token
+			token = strtok(env, split);
+		}
+
+		//Walk through other tokens
+		while(token != NULL){
+			//Copy the token to the array with strdup
+			args[count] = strdup(token);
+			if(!args[count]){perror("strdup error");}
+			token = strtok(NULL, split);
+			count++;
+		}
+
+		//If command process input
+		if(count != 0){
+			//Check if we want to set/get the environment variable
+			if(setEnv){
+				//Set environment variable
+				setenv(args[0],args[1], 1);
+
+			}else{
+				char *g = getenv(args[0]);
+
+				//Check if the environment variable is settled
+				if(g != NULL){
+					printf("%s\n",g);
+				}else{
+					printf("Error: Environment variable %s dosen't exist\n",args[0]);
+				}
 			}
 		}
-  }
+	}else{
+		//Get if it's like "$a"
+		char *e = getStrEnv(env);
 
-  fclose(fp);
-  if (line)
-  free(line);
-
-  regfree(&compiled_regex);
-  return 1;
+		//Check if it's an environment variable valid
+		if(e != NULL){
+			execAliasEnv(e);
+		}
+	}
 }
 
 /**
-   @brief Builtin command: print help.
-   @param args List of args.  Not examined.
-   @return Always returns 1, to continue executing.
+ * Get the environment variable with input like $a
+ * @param input: environment variable
+ * @return environment variable in *string
  */
+char *getStrEnv(char *input){
+	//Allocate main array
+	char *arg = malloc(MAX_INPUT * sizeof(char));
 
-int ioc_help(char **args)
-{
-    int i;
-    printf("Type program names and arguments, and hit enter.\n");
-    printf("The following are built in:\n");
+	//get the position of the "$"
+	if(strstr(input, "$")){
 
-    for (i = 0; i < ioc_num_builtins(); i++) {
-        printf("  %s\n", builtin_str[i]);
-    }
+		//Remove the "$"
+		char *tmp = strtok(input, "$");
 
-    printf("Use the man command for information on other programs.\n");
-    return 1;
+		//If only !$
+		if(tmp != NULL){
+			//Get the environment variable
+			arg = getenv(tmp);
+			if(arg){
+				strcat(arg , "\0");
+
+				//InputArgs is now the environment variable
+				return arg;
+			}
+		}
+	}
+	return NULL;
 }
 
 /**
-   @brief Builtin command: exit.
-   @param args List of args.  Not examined.
-   @return Always returns 0, to terminate execution.
+ * Execute the value of an alias or the value of the environment variable
+ * @param input: value of the alias or value of environment variable
  */
-int ioc_exit(char **args) {
-    return 0;
-}
+void execAliasEnv(char *input){
+	char *newImput = NULL;
+	//Delete " or '
+	if(strstr(input, "\"")){
+		newImput = removeChar(input, '"');
+	}else if(strstr(input, "'")){
+		newImput = removeChar(input, '\'');
+	}
 
-#define IOC_PWD_BUFSIZE 1024
+	char **arg;
+	int count = 0;
+	//if there is " or ' might have more than one argument like: ls -LR
+	if(newImput != NULL){
 
-/**
-   @brief Builtin command: pwd.
-   @param args List of args.  Not examined.
-   @return Always returns 0, to terminate execution.
- */
-int ioc_pwd(char **args){
-  char cwd[IOC_PWD_BUFSIZE];
-   if (getcwd(cwd, sizeof(cwd)) != NULL)
-       fprintf(stdout, "%s\n", cwd);
-   else
-       perror("getcwd() error");
-   return 1;
-}
+		//Split argument like; arg[0] = ls arg[1] = -LR
+		arg = strsplit(newImput, " ", &count);
 
-/**
-   @brief Builtin command: ln -> create a link between two files
-   @param args List of args.
-   @return Always returns 1, to continue execution.
- */
-int ioc_alias(char **args){
-  char *mainfile, *linkfile;
-  mainfile = args[1];
-  linkfile = args[2];
-  link(mainfile, linkfile);
-  return 1;
-}
+		if(!isProg(arg, count, arg[0]) && !isCommande(arg, count, arg[0])){
+			printf("%s: command not found\n", arg[0]);
+		}
+	}else{
+		//Split argument like; arg[0] = ls arg[1] = -LR
+		arg = strsplit(input, " ", &count);
 
-/**
-  @brief Launch a program and wait for it to terminate.
-  @param args Null terminated list of arguments (including program).
-  @return Always returns 1, to continue execution.
- */
-
-int ioc_launch(char **args)
-{
-    pid_t pid;
-    int status;
-
-    pid = fork();
-    if (pid == 0) {
-        // Child process
-        if (execvp(args[0], args) == -1) {
-            perror("ioc");
-        }
-        exit(EXIT_FAILURE);
-    } else if (pid < 0) {
-        // Error forking
-        perror("ioc");
-    } else {
-        // Parent process
-        do {
-            waitpid(pid, &status, WUNTRACED);
-        } while (!WIFEXITED(status) && !WIFSIGNALED(status));
-    }
-
-    return 1;
+		//If more than 1 argument => error cause it's not possible
+		//to have like: ls -LR not surrounded by " or '
+		if(count > 1){
+			printf("%s: command not found", arg[1]);
+		}else{
+			if(!isProg(arg, count, arg[0]) && !isCommande(arg, count, arg[0])){
+				printf("%s: command not found\n", arg[0]);
+			}
+		}
+	}
+	freeToken(arg, count);
 }
 
 /**
-   @brief Execute shell built-in or launch program.
-   @param args Null terminated list of arguments.
-   @return 1 if the shell should continue running, 0 if it should terminate
+ * Execute the command
+ * @param arg: argument of the executed function
+ * @param redirect: 1 if redirection to a file, 0 else
+ * @param filename: name of the file to write to
  */
-int ioc_execute(char **args)
-{
-    int i;
+void execute(char **arg, int redirect, char *filename){
+	pid_t  pid;
+	int    status;
 
-    if (args[0] == NULL) {
-        // An empty command was entered.
-        return 1;
-    }
+	//fork a child process
+	if ((pid = fork()) < 0){
+		perror("Child failed");
+		exit(1);
+	}else if (pid == 0){ //Child process
+		if(redirect){
 
-    for (i = 0; i < ioc_num_builtins(); i++) {
-        if (strcmp(args[0], builtin_str[i]) == 0) {
-            return (*builtin_func[i])(args);
-        }
-    }
+			//Create file and redirect stdout to write into it
+			mode_t mode = S_IRUSR | S_IRGRP | S_IROTH;
+			int fd = open(filename, O_RDWR | O_CREAT, mode);
+			dup2(fd, 1); //Redirect stdout
+			close(fd);
+		}
 
-    return ioc_launch(args);
-}
-
-#define IOC_RL_BUFSIZE 1024
-/**
-   @brief Read a line of input from stdin.
-   @return The line from stdin.
- */
-char *ioc_read_line(void)
-{
-    int bufsize = IOC_RL_BUFSIZE;
-    int position = 0;
-    char *buffer = malloc(sizeof(char) * bufsize);
-    int c;
-
-    if (!buffer) {
-        fprintf(stderr, "ioc: allocation error\n");
-        exit(EXIT_FAILURE);
-    }
-
-    while (1) {
-        // Read a character
-        c = getchar();
-
-        if (c == EOF) {
-            exit(EXIT_SUCCESS);
-        } else if (c == '\n') {
-            buffer[position] = '\0';
-            return buffer;
-        } else {
-            buffer[position] = c;
-        }
-        position++;
-
-        // If we have exceeded the buffer, reallocate.
-        if (position >= bufsize) {
-            bufsize += IOC_RL_BUFSIZE;
-            buffer = realloc(buffer, bufsize);
-            if (!buffer) {
-                fprintf(stderr, "ioc: allocation error\n");
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
-}
-
-#define IOC_TOK_BUFSIZE 64
-#define IOC_TOK_DELIM " \t\r\n\a"
-/**
-   @brief Loop getting input and executing it.
- */
-void ioc_loop(void)
-{
-    char *line;
-    char **args;
-    int status;
-
-    do {
-        printf("> ");
-        line = ioc_read_line();
-        args = ioc_split_line(line);
-        status = ioc_execute(args);
-
-        free(line);
-        free(args);
-    } while (status);
+		//execute the command
+		if (execvp(*arg, arg) < 0){
+			perror("Exec failed");
+			exit(1);
+		}
+		exit(0);
+	}
+	else { //Parent
+		//Wait for child completion
+		while (wait(&status) != pid);
+	}
 }
 
 /**
-   @brief Split a line into tokens (very naively).
-   @param line The line.
-   @return Null-terminated array of tokens.
+ * Remove all the specified character from an string
+ * @param input: string where specified character will be removed
+ * @param remove: character to remove
+ * @return the string without all the specified character
  */
-char **ioc_split_line(char *line)
-{
-    int bufsize = IOC_TOK_BUFSIZE, position = 0;
-    char **tokens = malloc(bufsize * sizeof(char*));
-    char *token, **tokens_backup;
+char *removeChar(char *input, char remove){
+	int i = 0;
+	int x = 0;
+	char c;
 
-    if (!tokens) {
-        fprintf(stderr, "ioc: allocation error\n");
-        exit(EXIT_FAILURE);
-    }
+	//Copy input
+	char *src = strdup(input);
+	if(!src){perror("strdup error");}
 
-    token = strtok(line, IOC_TOK_DELIM);
-    while (token != NULL) {
-        tokens[position] = token;
-        position++;
+	//Allocate memory for the return value
+	char *dst = calloc(strlen(src), sizeof(char));
+	if(!dst){perror("calloc error");}
 
-        if (position >= bufsize) {
-            bufsize += IOC_TOK_BUFSIZE;
-            tokens_backup = tokens;
-            tokens = realloc(tokens, bufsize * sizeof(char*));
-            if (!tokens) {
-                free(tokens_backup);
-                fprintf(stderr, "ioc: allocation error\n");
-                exit(EXIT_FAILURE);
-            }
-        }
+	//Walk through all elements
+	while ((c = input[i++]) != '\0') {
 
-        token = strtok(NULL, IOC_TOK_DELIM);
-    }
-    tokens[position] = NULL;
-    return tokens;
+		//Check if if not an escape char, except space
+		if(c != remove){
+			dst[x++] = c;
+		}
+	}
+	//Terminate the string with '\0'
+	dst[x] = '\0';
+
+	//Free copy of input
+	free(src);
+	return dst;
+}
+
+/**
+ * Call all the help function
+ * @param inputArgs: arguments from the command line
+ * @param size: arguments size
+ */
+void helpCmd(char **inputArgs, int size){
+	//Check command
+	if(!strcmp(inputArgs[1], "pwd")){
+		helpPwd();
+	}else if(!strcmp(inputArgs[1], "cd")){
+		helpCd();
+	}else if(!strcmp(inputArgs[1], "exit")){
+		helpExit();
+	}else if(!strcmp(inputArgs[1], "help")){
+		helpHelp();
+	}else if(!strcmp(inputArgs[1], "alias") ){
+		helpAlias();
+	}else{
+		helpHelp();
+	}
+}
+
+/**
+ * Help commands
+ */
+void helpHelp(){
+	printf("help: help [func]\n\tShow the help for the called function\n");
+}
+void helpCd(){
+	printf("cd: cd [dir]\n\tChange the current working directory\n");
+}
+void helpExit(){
+	printf("exit: exit [number]\n\tExit the program with an specific code\n");
+}
+void helpPwd(){
+	printf("pwd: pwd\n\tShow the name of current/working directory\n");
+}
+void helpAlias(){
+	printf("alias: alias [-p] [name[=value] ... ]\n\tSet alias or show all or one specific alias\n");
+}
+void helpEcho(){
+	printf("echo: echo [value]\n\tPrint the value put as argument\n");
 }

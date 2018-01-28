@@ -1,20 +1,43 @@
-CC=gcc -Wall -Wextra -std=gnu11 -D_GNU_SOURCE -O3 -g
-LIBS= -lpthread -lm 
-SRCS=$(wildcard *.c)
-OBJS=$(SRCS:.c=.o)
-BINS=$(SRCS:%.c=%)
+###############################
+# Author:	Anas Guetarni      #
+#			Melvin Gay             #
+# Date:		28.01.2018         #
+# Name:		makefile           #
+# Project:	ioc              #
+###############################
 
-ioc: main.o functions.o
-	$(CC) $^ -o $@ $(LIBS)
+#Source, executable, includes
+INCL=main.h input.h functions.h profil.h path.h split.h
+SRC=main.c input.c functions.c profil.c path.c split.c
+OBJS=$(SRC:.c=.o)
+EXE=ioc
 
-main.o: main.c
-	$(CC) $< -c
+#Compiler, linker defines, library defines
+CFLAGS=-Wall
+LIBS=
+CC=gcc
+RM=rm -rf
+DATE=$(shell date +'%d.%m.%Y at %H:%M:%S')
 
-functions.o: functions.c functions.h
-	$(CC) $< -c
+#All target
+all : $(EXE)
 
-run: ioc
-	./ioc
+#Compile and assemble C source files into object files
+%.o: %.c
+	@echo '//Building file: $<'
+	$(CC) $(CFLAGS) -c $*.c
+	@echo '//Finished building: $<'
+	@echo ' '
 
+# Link all object files with external libraries into binaries
+$(EXE): $(OBJS)
+	@echo '//Building target: $@'
+	$(CC) -o $(EXE) $(OBJS) $(LIBS)
+	@echo '//Finished building target: $@ the $(DATE)'
+
+#Objects depend on these libraries
+$(OBJS): $(INCL)
+
+#Clean up objects, exectuables
 clean:
-	rm -rf $(BINS) $(OBJS) ioc
+	$(RM) $(OBJS) $(EXE)

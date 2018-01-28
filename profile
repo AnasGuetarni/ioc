@@ -1,2 +1,2 @@
-PATH=/Users/Anas/anaconda/bin:/Users/Anas/.rvm/gems/ruby-2.3.0/bin:/Users/Anas/.rvm/gems/ruby-2.3.0@global/bin:/Users/Anas/.rvm/rubies/ruby-2.3.0/bin:/Library/Frameworks/Python.framework/Versions/2.7/bin:/Library/Frameworks/Python.framework/Versions/3.5/bin:/opt/local/bin:/opt/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/Users/Anas/.rvm/bin
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
 HOME=/Users/Anas
