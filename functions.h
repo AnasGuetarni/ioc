@@ -22,7 +22,6 @@
 // 6 progs and 64 alias maximum
 #define NB_PROGS 6
 #define MAX_ALIAS 64
-#define MAX_INPUT 1024
 
 
 //Structure used for alias
